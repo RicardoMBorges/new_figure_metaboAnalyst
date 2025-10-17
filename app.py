@@ -79,9 +79,9 @@ except Exception:
     )
 
 
-MockData_URL = "https://github.com/RicardoMBorges/new_figure_metaboAnalyst"
+MockData_URL = "https://github.com/RicardoMBorges/new_figure_metaboAnalyst/tree/main/Tutorial_Data"
 try:
-    st.sidebar.link_button("Mock Data", MockData_URL)
+    st.sidebar.link_button("Tutorial Data", MockData_URL)
 except Exception:
     st.sidebar.markdown(
         f'<a href="{MockData_URL}" target="_blank">'
@@ -1039,3 +1039,4 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
