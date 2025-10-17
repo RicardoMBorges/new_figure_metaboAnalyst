@@ -24,6 +24,83 @@ import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 from scipy.stats import chi2
+from pathlib import Path
+from PIL import Image, UnidentifiedImageError
+
+# ------------------ LOGO ------------------
+
+STATIC_DIR = Path(__file__).parent / "static"
+LOGO_PATH = STATIC_DIR / "LAABio.png"
+
+try:
+    logo = Image.open(LOGO_PATH)  # raises if missing
+    st.sidebar.image(logo, use_container_width=True)
+except FileNotFoundError:
+    st.sidebar.warning("Logo not found at static/LAABio.png")
+
+st.markdown(
+    """
+    
+    Developed by **Ricardo M Borges** and **LAABio-IPPN-UFRJ**  
+    contact: ricardo_mborges@yahoo.com.br  
+
+    🔗 Details: [GitHub repository](https://github.com/RicardoMBorges/new_figure_metaboAnalyst)
+
+    Check also: [DAFdiscovery](https://dafdiscovery.streamlit.app/)
+    
+    Check also: [TLC2Chrom](https://tlc2chrom.streamlit.app/)
+    """
+)
+
+# PayPal donate button
+st.sidebar.markdown("""
+<hr>
+<center>
+<p>To support the app development:</p>
+<a href="https://www.paypal.com/donate/?business=2FYTFNDV4F2D4&no_recurring=0&item_name=Support+with+%245+→+Send+receipt+to+tlc2chrom.app@gmail.com+with+your+login+email+→+Access+within+24h!&currency_code=USD" target="_blank">
+    <img src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_SM.gif" alt="Donate with PayPal button" border="0">
+</a>
+</center>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown("""---""")
+
+TUTORIAL_URL = "https://github.com/RicardoMBorges/new_figure_metaboAnalyst"
+try:
+    st.sidebar.link_button("📘 Tutorial", TUTORIAL_URL)
+except Exception:
+    st.sidebar.markdown(
+        f'<a href="{TUTORIAL_URL}" target="_blank">'
+        '<button style="padding:0.6rem 1rem; border-radius:8px; border:1px solid #ddd; cursor:pointer;">📘 Tutorial</button>'
+        '</a>',
+        unsafe_allow_html=True,
+    )
+
+
+MockData_URL = "https://github.com/RicardoMBorges/new_figure_metaboAnalyst"
+try:
+    st.sidebar.link_button("Mock Data", MockData_URL)
+except Exception:
+    st.sidebar.markdown(
+        f'<a href="{MockData_URL}" target="_blank">'
+        '<button style="padding:0.6rem 1rem; border-radius:8px; border:1px solid #ddd; cursor:pointer;">Mock Data</button>'
+        '</a>',
+        unsafe_allow_html=True,
+    )
+    
+VIDEO_URL = "https://github.com/RicardoMBorges/new_figure_metaboAnalyst"
+try:
+    st.sidebar.link_button("Video", VIDEO_URL)
+except Exception:
+    st.sidebar.markdown(
+        f'<a href="{VIDEO_URL}" target="_blank">'
+        '<button style="padding:0.6rem 1rem; border-radius:8px; border:1px solid #ddd; cursor:pointer;">📘 Tutorial</button>'
+        '</a>',
+        unsafe_allow_html=True,
+    )
+
+st.sidebar.markdown("""---""")
+
 
 # ------------------------------
 # ---------- Utilities ---------
@@ -754,6 +831,7 @@ st.markdown(
     """
     ---
     **Tips**
+    - First things first: run your study, process your data, analyze it using MetaboAnalyst, download the .zip folder and extract into a target folder.
     - This app does *not* require metadata.csv. Choose an existing group column or parse from Sample with a regex.
     - Axis labels are detected automatically even if MetaboAnalyst writes `PC1 (12.3%)` or `Comp. 1`/`Comp 1`.
     - Use the color mapping box in the sidebar to pin specific colors to classes.
