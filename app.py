@@ -21,6 +21,8 @@ from typing import Tuple, Optional, List
 import numpy as np
 import pandas as pd
 import streamlit as st
+st.set_page_config(page_title="MetaboAnalyst Post-Plots", layout="wide")
+
 import plotly.graph_objects as go
 import plotly.express as px
 from scipy.stats import chi2
@@ -105,8 +107,6 @@ st.sidebar.markdown("""---""")
 # ------------------------------
 # ---------- Utilities ---------
 # ------------------------------
-
-st.set_page_config(page_title="MetaboAnalyst Post‑Plots", layout="wide")
 
 @st.cache_data
 def read_csv_any(buf, **kw) -> pd.DataFrame:
@@ -305,6 +305,94 @@ def compute_pls_r2q2(X: pd.DataFrame, y: pd.Series, max_comps: int = 5, cv_folds
         rows.append(dict(ncomp=n, R2Y=r2y, Q2=q2))
     return pd.DataFrame(rows), None
 
+# ---------- Loadings helpers (new) ----------
+
+def _norm_cols(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out.columns = [str(c).strip() for c in out.columns]
+    return out
+
+def guess_axis_col(modality: str, df: pd.DataFrame) -> Optional[str]:
+    """
+    Try to find the x-axis column for the chosen modality.
+    - Chromatography: retention time
+    - NMR: ppm / chemical shift
+    - IV/UV-Vis: wavelength (nm)
+    - RAMAN: wavenumber (cm-1)
+    """
+    cols = [c.lower() for c in df.columns]
+    cand_map = {
+        "Chromatography": [r"^rt$", r"retention.*time", r"row retention time", r"^time$"],
+        "NMR":            [r"^ppm$", r"chemical.*shift", r"^delta$", r"^shift$"],
+        "IV":             [r"^wavelength", r"\(nm\)", r"\bnm\b", r"lambda"],
+        "RAMAN":          [r"^wavenumber", r"\(cm-1\)", r"\bcm[- ]?1\b", r"raman.*shift"],
+    }
+    patterns = cand_map.get(modality, [])
+    for pat in patterns:
+        for i, c in enumerate(cols):
+            if re.search(pat, c, re.I):
+                return df.columns[i]
+    # Fallback: if there is a single numeric column, use it
+    numc = df.select_dtypes(include=[np.number]).columns.tolist()
+    if len(numc) == 1:
+        return numc[0]
+    return None
+
+def list_pc_columns(df: pd.DataFrame, kind: str) -> List[str]:
+    """
+    kind='PCA'  → PC1, PC2, ... (robust to 'PC1 (12.3%)')
+    kind='PLS'  → Comp 1, Comp. 1, LV1, etc.
+    """
+    cols = []
+    for c in df.columns:
+        cl = str(c).strip().lower()
+        if kind.upper() == "PCA":
+            # PC1 or "PC1 (12.3%)"
+            if re.match(r"^pc\s*\d+(\s*\(.*\))?$", cl):
+                cols.append(c)
+        else:
+            # comp 1 / comp. 1 / lv1
+            if re.match(r"^(comp\.?\s*\d+|lv\s*\d+)(\s*\(.*\))?$", cl):
+                cols.append(c)
+    # Sort by component index if possible
+    def pc_num(name):
+        m = re.search(r"(\d+)", str(name))
+        return int(m.group(1)) if m else 999
+    return sorted(cols, key=pc_num)
+
+def stem_traces(x, y, name, color=None):
+    """
+    Build 'stem' (vertical line) traces for Plotly.
+    """
+    xs = []; ys = []
+    for xi, yi in zip(x, y):
+        xs += [xi, xi, None]
+        ys += [0,  yi, None]
+    return go.Scatter(x=xs, y=ys, mode="lines", name=name,
+                      line=dict(width=1.5, color=color) if color else None)
+
+def loadings_plot(df: pd.DataFrame, xcol: str, pc_cols: List[str],
+                  style: str = "Lines", reverse_x: bool = False,
+                  title: str = "", height: int = 600):
+    """Return a Plotly Figure for loadings vs axis."""
+    fig = go.Figure()
+    # Sort by x for cleaner lines
+    d = df[[xcol] + pc_cols].copy().dropna()
+    d = d.sort_values(by=xcol)
+    for i, pc in enumerate(pc_cols):
+        if style == "Stems":
+            fig.add_trace(stem_traces(d[xcol], d[pc], name=str(pc)))
+        else:
+            fig.add_scatter(x=d[xcol], y=d[pc], mode="lines", name=str(pc))
+    fig.update_layout(
+        template="simple_white", height=height,
+        xaxis_title=xcol, yaxis_title="Loading", title=title, legend_title="Components"
+    )
+    if reverse_x:
+        fig.update_xaxes(autorange="reversed")
+    return fig
+
+
 # ---- SAFE PREVIEW (NO PYARROW) ----
 
 def show_df_safe(df: pd.DataFrame, rows: int = 20):
@@ -370,7 +458,6 @@ def parse_metaboanalyst_xnorm(df: pd.DataFrame):
 
 # ------------------------------
 # --------- Sidebar IO ---------
-
 # ------------------------------
 
 st.sidebar.header("Inputs")
@@ -410,7 +497,22 @@ if not use_samples:
         "data_normalized.csv (optional)", type=["csv"],
         help="Upload to compute R2/Q2 internally via CV if you don't have plsda_r2q2.csv."
     )
-  
+
+st.sidebar.subheader("Loadings (optional)")
+pca_loadings_upload = st.sidebar.file_uploader(
+    "pca_loadings.csv (from MetaboAnalyst)", type=["csv"],
+    help="MetaboAnalyst → Download → pca_loadings.csv"
+)
+plsda_loadings_upload = st.sidebar.file_uploader(
+    "plsda_loadings.csv (from MetaboAnalyst)", type=["csv"],
+    help="MetaboAnalyst → Download → plsda_loadings.csv"
+)
+
+pca_loadings_df: Optional[pd.DataFrame] = None
+plsda_loadings_df: Optional[pd.DataFrame] = None
+
+st.sidebar.markdown("---")
+
 # ---- Grouping options (no external metadata) ----
 st.sidebar.markdown("---")
 st.sidebar.subheader("Grouping (no metadata)")
@@ -450,6 +552,13 @@ with st.spinner("Loading data…"):
             vip_df = read_csv_any(vip_file)
             r2q2_df = read_csv_any(r2q2_file) if 'r2q2_file' in locals() and os.path.isfile(r2q2_file) else None
             xnorm_df = read_csv_any(xnorm_file) if 'xnorm_file' in locals() and os.path.isfile(xnorm_file) else None
+
+            # --- NEW: try sample loadings too (optional, won’t fail if absent)
+            if os.path.isfile("pca_loadings.csv"):
+                pca_loadings_df = read_csv_any("pca_loadings.csv")
+            if os.path.isfile("plsda_loadings.csv"):
+                plsda_loadings_df = read_csv_any("plsda_loadings.csv")
+
         else:
             if not (pca_score_upload and pls_score_upload and vip_upload):
                 st.info("Upload pca_score.csv, plsda_score.csv and plsda_vip.csv or enable 'Use sample files'.")
@@ -460,6 +569,10 @@ with st.spinner("Loading data…"):
             vip_df = read_csv_any(vip_upload)
             r2q2_df = read_csv_any(r2q2_upload) if 'r2q2_upload' in locals() and r2q2_upload is not None else None
             xnorm_df = read_csv_any(xnorm_upload) if 'xnorm_upload' in locals() and xnorm_upload is not None else None
+
+            # --- NEW: read uploaded loadings if provided
+            pca_loadings_df = read_csv_any(pca_loadings_upload) if pca_loadings_upload else None
+            plsda_loadings_df = read_csv_any(plsda_loadings_upload) if plsda_loadings_upload else None
 
         # Normalize score files
         pca_score = ensure_sample_col(pca_score)
@@ -475,6 +588,7 @@ with st.spinner("Loading data…"):
     except Exception as e:
         st.error(f"Failed to read data: {e}")
         st.stop()
+
 
 
 # Determine group column from available options
@@ -531,7 +645,7 @@ with st.expander("Peek at tables"):
     show_df_safe(pls_work, rows=20)
 
 # Tabs for PCA, PLS‑DA, VIP
-pca_tab, pls_tab = st.tabs(["PCA", "PLS‑DA"]) 
+pca_tab, pls_tab, load_tab = st.tabs(["PCA", "PLS-DA", "Full-resolution loadings plot"]) 
 
 # ------------------------------
 # -------------- PCA -----------
@@ -683,6 +797,93 @@ with pls_tab:
                 )
             except Exception:
                 st.info("Install 'kaleido' to enable PNG export: pip install -U kaleido")
+
+# -------------------------------------------------------
+# -------------- Optional Loading plot as a line --------
+# -------------------------------------------------------
+with load_tab:
+    st.subheader("Full-resolution loadings plot")
+    st.caption("Upload *pca_loadings.csv* and/or *plsda_loadings.csv* from MetaboAnalyst and pick your modality.")
+
+    modality = st.radio("Modality (affects x-axis detection & defaults)",
+                        ["Chromatography", "NMR", "IV", "RAMAN"], index=0, horizontal=True)
+    src_kind = st.radio("Source", ["PCA loadings", "PLS-DA loadings"], index=0, horizontal=True)
+
+    # --- SAFE: don’t stop the whole app if missing
+    if src_kind == "PCA loadings":
+        if pca_loadings_df is None or pca_loadings_df.empty:
+            st.warning("Upload **pca_loadings.csv** in the sidebar to use this view.")
+            st.stop()  # <- If you prefer to keep the stop, it’s ok here since we are in the last tab block.
+        df_load = _norm_cols(pca_loadings_df)
+    else:
+        if plsda_loadings_df is None or plsda_loadings_df.empty:
+            st.warning("Upload **plsda_loadings.csv** in the sidebar to use this view.")
+            st.stop()
+        df_load = _norm_cols(plsda_loadings_df)
+
+    default_x = guess_axis_col(modality, df_load)
+    numeric_cols = df_load.select_dtypes(include=[np.number]).columns.tolist()
+    all_cols = list(df_load.columns)
+    x_index = all_cols.index(default_x) if default_x in all_cols else 0
+    xcol = st.selectbox("X-axis column", options=all_cols, index=x_index)
+
+    if xcol not in numeric_cols:
+        st.info("Selected x-axis is not numeric; trying to coerce.")
+        df_load[xcol] = pd.to_numeric(df_load[xcol], errors="coerce")
+        if not np.issubdtype(df_load[xcol].dtype, np.number):
+            st.error("X-axis column must be numeric after coercion.")
+            st.stop()
+
+    comp_cols = list_pc_columns(df_load, "PCA" if src_kind.startswith("PCA") else "PLS")
+    if not comp_cols:
+        st.error("Could not find component columns (e.g., PC1/PC2 or Comp 1/Comp 2).")
+        st.stop()
+
+    # Detect component columns
+    comp_cols = list_pc_columns(df_load, "PCA" if src_kind.startswith("PCA") else "PLS")
+    if not comp_cols:
+        st.error("Could not find component columns (e.g., PC1/PC2 or Comp 1/Comp 2).")
+        st.stop()
+
+    sel_pcs = st.multiselect(
+        "Select components to plot", comp_cols,
+        default=comp_cols[:2] if len(comp_cols) >= 2 else comp_cols
+    )
+    if not sel_pcs:
+        st.info("Pick at least one component.")
+        st.stop()
+
+    # Style & options
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        style = st.selectbox("Style", ["Lines", "Stems"], index=0,
+                             help="Stems = vertical stick plot")
+    with col2:
+        reverse_x = st.checkbox("Reverse x-axis (NMR ppm)", value=(modality == "NMR"))
+    with col3:
+        fig_h = st.number_input("Figure height (px)", min_value=400, max_value=2000, value=700, step=50)
+
+    title = f"{src_kind}: {' / '.join(sel_pcs)} — {modality}"
+    fig = loadings_plot(df_load, xcol, sel_pcs, style=style, reverse_x=reverse_x, title=title, height=fig_h)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Exports
+    st.markdown("**Export**")
+    e1, e2, e3 = st.columns([1,1,2])
+    with e1:
+        st.download_button("Download HTML", data=fig.to_html(include_plotlyjs="cdn"),
+                           file_name=f"{src_kind.replace(' ', '_')}_{modality}_loadings.html")
+    with e2:
+        try:
+            import kaleido  # noqa
+            png_w = st.number_input("PNG width (px)", min_value=800, max_value=4000, value=2000, step=100, key="load_pngw")
+            png_h = st.number_input("PNG height (px)", min_value=600, max_value=3000, value=fig_h, step=50, key="load_pngh")
+            scale = st.slider("Scale", 1, 5, 2)
+            png = fig.to_image(format="png", width=int(png_w), height=int(png_h), scale=int(scale))
+            st.download_button("Download PNG", data=png,
+                               file_name=f"{src_kind.replace(' ', '_')}_{modality}_loadings.png")
+        except Exception:
+            st.info("Install **kaleido** to enable PNG export: `pip install -U kaleido`")
 
 
     # ===== BOTTOM: R2/Q2 VALIDATION =====
