@@ -67,7 +67,7 @@ st.sidebar.markdown("""
 
 st.sidebar.markdown("""---""")
 
-TUTORIAL_URL = "https://github.com/RicardoMBorges/new_figure_metaboAnalyst"
+TUTORIAL_URL = "https://github.com/RicardoMBorges/new_figure_metaboAnalyst/blob/main/README.md"
 try:
     st.sidebar.link_button("📘 Tutorial", TUTORIAL_URL)
 except Exception:
@@ -1039,4 +1039,5 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
