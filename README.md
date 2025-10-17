@@ -100,6 +100,11 @@ Your app will be live in minutes 🚀
 5. Download publication-quality figures
 ```
 
+## Tutorial Data
+
+Tutorial data was downloaded from https://www.metaboanalyst.ca/MetaboAnalyst/upload/StatUploadView.xhtml
+- Peak lists and intensity files for 50 urine samples measured by 1H NMR (Psihogios NG, et al.). Group 1- control; group 2 - severe kidney disease. 
+
 ---
 
 ##  requirements.txt
