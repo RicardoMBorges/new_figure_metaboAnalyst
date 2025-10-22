@@ -90,7 +90,7 @@ except Exception:
         unsafe_allow_html=True,
     )
     
-VIDEO_URL = "https://github.com/RicardoMBorges/new_figure_metaboAnalyst"
+VIDEO_URL = "https://youtu.be/V-AncFEH32Y"
 try:
     st.sidebar.link_button("Video", VIDEO_URL)
 except Exception:
@@ -1039,5 +1039,6 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
 
