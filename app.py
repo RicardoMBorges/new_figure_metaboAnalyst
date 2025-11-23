@@ -592,43 +592,94 @@ with st.spinner("Loading data…"):
 
 
 # Determine group column from available options
-candidate_group_cols = []
-for cand in ["Group", "Class", "Classes", "ATTRIBUTE_Samples", "group", "class", "labels", "Label"]:
-    if cand in pca_score.columns:
-        candidate_group_cols.append(cand)
 
-selected_group_col = None
-if mode == "Use a column in the score CSV":
-    if candidate_group_cols:
-        selected_group_col = st.sidebar.selectbox("Pick group column", candidate_group_cols, index=0)
-    else:
-        st.sidebar.warning("No obvious group column found in pca_score.csv. Switch to 'Parse from Sample via regex'.")
-        mode = "Parse from Sample via regex"
-
-# Build working copies with a unified 'Group' column
+# Working copies
 pca_work = pca_score.copy()
 pls_work = plsda_score.copy()
 
-if mode == "Use a column in the score CSV" and selected_group_col:
-    pca_work["Group"] = pca_work[selected_group_col].astype(str).str.strip()
-    if selected_group_col in pls_work.columns:
-        pls_work["Group"] = pls_work[selected_group_col].astype(str).str.strip()
-    else:
-        mapping = dict(zip(pca_work["Sample"], pca_work["Group"]))
-        pls_work["Group"] = pls_work["Sample"].map(mapping).fillna("Group")
-
-elif mode == "Parse from Sample via regex":
-    pca_work["Group"] = build_group_from_regex(pca_work["Sample"], regex_pat)
-    pls_work["Group"] = build_group_from_regex(pls_work["Sample"], regex_pat)
-
-else:  # Single group
-    pca_work["Group"] = "All"
-    pls_work["Group"] = "All"
-
-# >>> ADD THESE LINES HERE <<<
 # Clean sample IDs for robust matching
 pca_work["Sample"] = pca_work["Sample"].astype(str).str.strip()
 pls_work["Sample"] = pls_work["Sample"].astype(str).str.strip()
+
+groups_from_xnorm = False
+
+# 1) Try to use data_normalized.csv (Label row) as the source of group labels
+if 'xnorm_df' in locals() and xnorm_df is not None and not xnorm_df.empty:
+    Xnorm_tmp, ynorm_tmp, msg_norm = parse_metaboanalyst_xnorm(xnorm_df)
+    if msg_norm is None and ynorm_tmp is not None and not ynorm_tmp.empty:
+        # ynorm_tmp: index = sample names (columns of xnorm_df), values = group labels
+        label_map = {
+            _canon_id(s, strip_ext=True): str(lbl)
+            for s, lbl in ynorm_tmp.items()
+        }
+
+        def map_group(sample_name: str) -> str:
+            key = _canon_id(sample_name, strip_ext=True)
+            return label_map.get(key, "Unknown")
+
+        pca_work["Group"] = pca_work["Sample"].apply(map_group)
+        pls_work["Group"] = pls_work["Sample"].apply(map_group)
+        groups_from_xnorm = True
+
+# 2) If xnorm_df is not available / failed, fallback to old logic
+if not groups_from_xnorm:
+    # Determine group column from score CSVs
+    candidate_group_cols = []
+    for cand in ["Group", "Class", "Classes", "ATTRIBUTE_Samples", "group", "class", "labels", "Label"]:
+        if cand in pca_score.columns and cand not in candidate_group_cols:
+            candidate_group_cols.append(cand)
+        if cand in plsda_score.columns and cand not in candidate_group_cols:
+            candidate_group_cols.append(cand)
+
+    selected_group_col = None
+    if mode == "Use a column in the score CSV":
+        if candidate_group_cols:
+            selected_group_col = st.sidebar.selectbox("Pick group column", candidate_group_cols, index=0)
+        else:
+            st.sidebar.warning(
+                "No obvious group column found in score CSVs. "
+                "Switching to 'Parse from Sample via regex'."
+            )
+            mode = "Parse from Sample via regex"
+
+    if mode == "Use a column in the score CSV" and selected_group_col:
+        # PCA
+        if selected_group_col in pca_work.columns:
+            pca_work["Group"] = pca_work[selected_group_col].astype(str).str.strip()
+        elif selected_group_col in pls_work.columns:
+            m = dict(
+                zip(
+                    pls_work["Sample"].astype(str).str.strip(),
+                    pls_work[selected_group_col].astype(str).str.strip(),
+                )
+            )
+            pca_work["Group"] = pca_work["Sample"].astype(str).str.strip().map(m)
+
+        # PLS-DA
+        if selected_group_col in pls_work.columns:
+            pls_work["Group"] = pls_work[selected_group_col].astype(str).str.strip()
+        elif selected_group_col in pca_work.columns:
+            m = dict(
+                zip(
+                    pca_work["Sample"].astype(str).str.strip(),
+                    pca_work[selected_group_col].astype(str).str.strip(),
+                )
+            )
+            pls_work["Group"] = pls_work["Sample"].astype(str).str.strip().map(m)
+
+        # if everything failed
+        if "Group" not in pca_work.columns:
+            pca_work["Group"] = "All"
+        if "Group" not in pls_work.columns:
+            pls_work["Group"] = "All"
+
+    elif mode == "Parse from Sample via regex":
+        pca_work["Group"] = build_group_from_regex(pca_work["Sample"], regex_pat)
+        pls_work["Group"] = build_group_from_regex(pls_work["Sample"], regex_pat)
+
+    else:  # Single group
+        pca_work["Group"] = "All"
+        pls_work["Group"] = "All"
 
 
 # ------------------------------
@@ -1039,6 +1090,7 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
 
 
