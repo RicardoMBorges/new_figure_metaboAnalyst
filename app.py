@@ -580,6 +580,8 @@ with st.spinner("Loading data…"):
         # Normalize score files
         pca_score = ensure_sample_col(pca_score)
         plsda_score = ensure_sample_col(plsda_score)
+        pca_score.columns = [str(c).strip() for c in pca_score.columns]
+        plsda_score.columns = [str(c).strip() for c in plsda_score.columns]
 
         # Find axis columns
         # ---------- Axis column detection with robust fallback ----------
@@ -1189,6 +1191,7 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
 
 
