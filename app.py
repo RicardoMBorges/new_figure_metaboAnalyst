@@ -550,6 +550,7 @@ with st.spinner("Loading data…"):
             pca_score = read_csv_any(pca_score_file)
             plsda_score = read_csv_any(plsda_score_file)
             vip_df = read_csv_any(vip_file)
+            vip_df.columns = [str(c).strip() for c in vip_df.columns]
             r2q2_df = read_csv_any(r2q2_file) if 'r2q2_file' in locals() and os.path.isfile(r2q2_file) else None
             xnorm_df = read_csv_any(xnorm_file) if 'xnorm_file' in locals() and os.path.isfile(xnorm_file) else None
 
@@ -567,6 +568,8 @@ with st.spinner("Loading data…"):
             pca_score = read_csv_any(pca_score_upload)
             plsda_score = read_csv_any(pls_score_upload)
             vip_df = read_csv_any(vip_upload)
+            vip_df.columns = [str(c).strip() for c in vip_df.columns]
+
             r2q2_df = read_csv_any(r2q2_upload) if 'r2q2_upload' in locals() and r2q2_upload is not None else None
             xnorm_df = read_csv_any(xnorm_upload) if 'xnorm_upload' in locals() and xnorm_upload is not None else None
 
@@ -848,8 +851,58 @@ with pls_tab:
     st.markdown("---")
     st.markdown("### VIP Top-N (Component 1)")
 
-    vip_col = try_guess_col(vip_df, ["comp. 1", "comp 1", "vip 1", "vip comp 1"]) or "Comp. 1"
+    # --- Robust VIP column detection ---
+    def pick_vip_column(df: pd.DataFrame) -> str:
+        """
+        Try to find the VIP column for component 1 in plsda_vip.csv.
+        - Prefer columns whose name suggests 'comp 1' or 'vip' for first component.
+        - Fall back to the first numeric column.
+        """
+        cols = [str(c).strip() for c in df.columns]
+        lower = [c.lower() for c in cols]
+    
+        # 1) Try typical MetaboAnalyst names / variants
+        preferred_patterns = [
+            "comp. 1", "comp 1", "comp1",
+            "vip 1", "vip comp 1", "vip (comp 1)",
+            "vip_comp1",
+        ]
+    
+        for pat in preferred_patterns:
+            for orig, low in zip(cols, lower):
+                if pat in low:
+                    return orig
+    
+        # 2) Heuristic: numeric columns whose name contains 'vip' or 'comp'
+        candidates = []
+        for orig, low in zip(cols, lower):
+            if ("vip" in low or "comp" in low) and np.issubdtype(df[orig].dtype, np.number):
+                candidates.append(orig)
+    
+        if candidates:
+            return candidates[0]
+    
+        # 3) Fallback: first numeric column in the dataframe
+        num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        if num_cols:
+            return num_cols[0]
+    
+        # 4) Give up with a clear error
+        raise ValueError(
+            "Could not detect a numeric VIP column in plsda_vip.csv. "
+            "Please check that it contains a column like 'Comp. 1', 'VIP (Comp 1)', etc."
+        )
+    
+    
+    # Use the helper
+    try:
+        vip_col = pick_vip_column(vip_df)
+    except ValueError as e:
+        st.warning(str(e))
+        st.stop()
+    
     name_col = "Unnamed: 0" if "Unnamed: 0" in vip_df.columns else vip_df.columns[0]
+
 
     # How many features to show
     n_available = int(vip_df[vip_col].notna().sum())
@@ -1136,6 +1189,7 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
 
 
