@@ -671,7 +671,7 @@ if 'xnorm_df' in locals() and xnorm_df is not None and not xnorm_df.empty:
 if not groups_from_xnorm:
     # Determine group column from score CSVs
     candidate_group_cols = []
-    for cand in ["Group", "Class", "Classes", "ATTRIBUTE_Samples", "group", "class", "labels", "Label"]:
+    for cand in ["Group", "Class", "Classes", "ATTRIBUTE_Samples", "group", "class", "labels", "Label", "ATTRIBUTE_Group", "ATTRIBUTE_Class"]:
         if cand in pca_score.columns and cand not in candidate_group_cols:
             candidate_group_cols.append(cand)
         if cand in plsda_score.columns and cand not in candidate_group_cols:
@@ -1136,6 +1136,7 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
 
 
