@@ -402,59 +402,94 @@ def show_df_safe(df: pd.DataFrame, rows: int = 20):
 
 def parse_metaboanalyst_xnorm(df: pd.DataFrame):
     """
-    Parse MetaboAnalyst 'data_normalized.csv' where:
-      - Columns = samples (plus a first column like 'Name')
-      - A row with first cell 'Label' contains class labels for each sample column
-      - Remaining rows = numeric features
-    Returns: X (samples x features), y (Series indexed by sample)
+    Parse MetaboAnalyst 'data_normalized.csv' in **either** of the two common formats:
+
+    Format A (old, samples in columns):
+        Name,  S1,   S2,   S3, ...
+        Label, Ctr,  Ctr,  HEME, ...
+        feat1, v11,  v12,  v13, ...
+        ...
+
+    Format B (new, samples in rows – like your file):
+        Unnamed: 0,  Label, feat1, feat2, ...
+        sample1.mzxml, Control, v11, v12, ...
+        sample2.mzxml, HEME,    v21, v22, ...
+        ...
+
+    Returns:
+        X: DataFrame (samples x features, numeric)
+        y: Series (classes, index = sample IDs)
+        msg: None on success, or error string on failure
     """
     d = df.copy()
-
-    # Canonicalize col names and first column name
     d.columns = [str(c).strip() for c in d.columns]
     first_col = d.columns[0]
 
-    # Find the 'Label' row (case-insensitive, first column)
+    # -------- FORMAT A: "Label" row in first column --------
     label_mask = d[first_col].astype(str).str.strip().str.lower().eq("label")
-    if not label_mask.any():
-        return None, None, "No 'Label' row found (first column should contain 'Label' in one row)."
+    if label_mask.any():
+        label_row_idx = d.index[label_mask][0]
+        sample_cols = d.columns[1:]
 
-    label_row_idx = d.index[label_mask][0]
+        y = d.loc[label_row_idx, sample_cols].astype(str).str.strip()
+        y.index = [str(c).strip() for c in sample_cols]
 
-    # Sample columns are every column except the first (e.g., 'Name')
-    sample_cols = d.columns[1:]
+        d_feat = d.drop(index=label_row_idx)
+        d_feat = d_feat.drop(columns=[first_col])
+        d_feat = d_feat.apply(pd.to_numeric, errors="coerce")
 
-    # y: classes from the Label row (align to sample columns)
-    y = d.loc[label_row_idx, sample_cols].astype(str).str.strip()
-    y.index = [str(c).strip() for c in sample_cols]
+        X = d_feat.T
+        X.index = [str(ix).strip() for ix in X.index]
+        y = y.reindex(X.index)
 
-    # Drop the label row from the data
-    d = d.drop(index=label_row_idx)
+        mask = y.notna()
+        X = X.loc[mask]
+        y = y.loc[mask]
 
-    # If first column is feature IDs (Name), set it as index and drop it from data
-    d_features = d.drop(columns=[first_col])
-    # Convert to numeric
-    d_features = d_features.apply(pd.to_numeric, errors="coerce")
+        X = X.loc[:, X.notna().any(axis=0)]
+        X = X.loc[:, X.var(axis=0) > 0]
 
-    # X: samples x features
-    X = d_features.T
-    # Make sure X rows (samples) match y index
-    X.index = [str(ix).strip() for ix in X.index]
-    y = y.reindex(X.index)
+        if X.empty or y.empty:
+            return None, None, "After cleaning (format A), X or y is empty."
 
-    # Drop samples with missing labels
-    mask = y.notna()
-    X = X.loc[mask]
-    y = y.loc[mask]
+        return X, y, None
 
-    # Drop all-NaN / zero-variance features
+    # -------- FORMAT B: "Label" is a column (your case) --------
+    lower_cols = [c.lower() for c in d.columns]
+    label_col_candidates = [
+        d.columns[i]
+        for i, c in enumerate(lower_cols)
+        if c in ("label", "class", "group")
+    ]
+    if not label_col_candidates:
+        return None, None, (
+            "Could not find 'Label' row or a 'Label/Class/Group' column "
+            "in data_normalized.csv."
+        )
+
+    labcol = label_col_candidates[0]      # e.g. 'Label'
+    id_col = first_col                    # e.g. 'Unnamed: 0' or 'Name'
+
+    # y: classes
+    y = d[labcol].astype(str).str.strip()
+    # index by sample ID
+    y.index = d[id_col].astype(str).str.strip()
+
+    # X: drop id + label, keep only numeric feature columns
+    d_feat = d.drop(columns=[id_col, labcol], errors="ignore")
+    d_feat = d_feat.apply(pd.to_numeric, errors="coerce")
+
+    X = d_feat.copy()
+    X.index = y.index
+
+    # Clean
     X = X.loc[:, X.notna().any(axis=0)]
     X = X.loc[:, X.var(axis=0) > 0]
 
     if X.empty or y.empty:
-        return None, None, "After cleaning, X or y is empty."
-    return X, y, None
+        return None, None, "After cleaning (format B), X or y is empty."
 
+    return X, y, None
 
 # ------------------------------
 # --------- Sidebar IO ---------
@@ -1220,6 +1255,7 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
 
 
