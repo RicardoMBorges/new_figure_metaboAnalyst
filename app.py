@@ -540,6 +540,19 @@ for line in color_text.splitlines():
     if ":" in line:
         k, v = line.split(":", 1)
         user_palette[k.strip()] = v.strip()
+# --- DEBUG: show detected groups in the sidebar ---
+st.sidebar.markdown("**Detected groups (PCA):**")
+try:
+    st.sidebar.code(", ".join(sorted(map(str, pca_work["Group"].dropna().unique()))))
+except Exception:
+    st.sidebar.code("No Group column in PCA table")
+
+st.sidebar.markdown("**Detected groups (PLS-DA):**")
+try:
+    st.sidebar.code(", ".join(sorted(map(str, pls_work["Group"].dropna().unique()))))
+except Exception:
+    st.sidebar.code("No Group column in PLS-DA table")
+
 
 # ------------------------------
 # -------- Load the data -------
@@ -1207,6 +1220,7 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
 
 
