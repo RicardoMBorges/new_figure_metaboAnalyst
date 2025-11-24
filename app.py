@@ -697,6 +697,7 @@ if not groups_from_xnorm:
             candidate_group_cols.append(pls_cols_map[cand])
 
 
+
     selected_group_col = None
     if mode == "Use a column in the score CSV":
         if candidate_group_cols:
@@ -1206,6 +1207,7 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
 
 
