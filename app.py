@@ -579,11 +579,57 @@ with st.spinner("Loading data…"):
         plsda_score = ensure_sample_col(plsda_score)
 
         # Find axis columns
-        pc1_col = try_guess_col(pca_score, ["pc1", "pc 1"]) or "PC1"
-        pc2_col = try_guess_col(pca_score, ["pc2", "pc 2"]) or "PC2"
+        # ---------- Axis column detection with robust fallback ----------
+        
+        def pick_pls_components(df: pd.DataFrame) -> Tuple[str, str]:
+            """
+            Try to find the first two component columns in plsda_score.csv.
+            Falls back to the first two numeric columns if heuristics fail.
+            """
+            # 1) Try typical MetaboAnalyst names
+            c1 = try_guess_col(df, ["comp 1", "comp. 1", "comp1", "lv1", "t[1]", "t 1"])
+            c2 = try_guess_col(df, ["comp 2", "comp. 2", "comp2", "lv2", "t[2]", "t 2"])
+        
+            # 2) If any is missing, fallback to numeric columns
+            if (c1 is None or c1 not in df.columns) or (c2 is None or c2 not in df.columns):
+                num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+                # exclude common non-score numeric columns if present
+                blacklist = {"n", "count"}
+                num_cols = [c for c in num_cols if c.lower() not in blacklist]
+                if len(num_cols) < 2:
+                    raise ValueError(
+                        "Could not find two numeric component columns in plsda_score.csv. "
+                        "Check that your file contains Comp 1/Comp 2, LV1/LV2, t[1]/t[2], etc."
+                    )
+                c1, c2 = num_cols[0], num_cols[1]
+        
+            return c1, c2
+        
+        
+        def pick_pca_components(df: pd.DataFrame) -> Tuple[str, str]:
+            """
+            Try to find PC1/PC2 in pca_score.csv.
+            Falls back to the first two numeric columns if heuristics fail.
+            """
+            pc1_col = try_guess_col(df, ["pc1", "pc 1"]) or None
+            pc2_col = try_guess_col(df, ["pc2", "pc 2"]) or None
+        
+            if (pc1_col is None or pc1_col not in df.columns) or (pc2_col is None or pc2_col not in df.columns):
+                num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+                if len(num_cols) < 2:
+                    raise ValueError(
+                        "Could not find two numeric PC columns in pca_score.csv. "
+                        "Check that your file contains PC1/PC2 or similar."
+                    )
+                pc1_col, pc2_col = num_cols[0], num_cols[1]
+        
+            return pc1_col, pc2_col
+        
+        
+        # Use helpers
+        pc1_col, pc2_col = pick_pca_components(pca_score)
+        c1, c2       = pick_pls_components(plsda_score)
 
-        c1 = try_guess_col(plsda_score, ["comp 1", "comp. 1", "comp1"]) or "Comp 1"
-        c2 = try_guess_col(plsda_score, ["comp 2", "comp. 2", "comp2"]) or "Comp 2"
 
     except Exception as e:
         st.error(f"Failed to read data: {e}")
@@ -1090,6 +1136,7 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
 
 
