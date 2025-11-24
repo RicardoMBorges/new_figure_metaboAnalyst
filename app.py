@@ -676,11 +676,26 @@ if 'xnorm_df' in locals() and xnorm_df is not None and not xnorm_df.empty:
 if not groups_from_xnorm:
     # Determine group column from score CSVs
     candidate_group_cols = []
-    for cand in ["Group", "Class", "Classes", "ATTRIBUTE_Samples", "group", "class", "labels", "Label", "ATTRIBUTE_Group", "ATTRIBUTE_Class"]:
-        if cand in pca_score.columns and cand not in candidate_group_cols:
-            candidate_group_cols.append(cand)
-        if cand in plsda_score.columns and cand not in candidate_group_cols:
-            candidate_group_cols.append(cand)
+    # Build lowercase -> original name maps
+    pca_cols_map = {str(c).strip().lower(): c for c in pca_score.columns}
+    pls_cols_map = {str(c).strip().lower(): c for c in plsda_score.columns}
+    
+    # Logical “groupish” names in lowercase
+    for cand in [
+        "group",
+        "class",
+        "classes",
+        "attribute_samples",
+        "attribute_group",
+        "attribute_class",
+        "labels",
+        "label",
+    ]:
+        if cand in pca_cols_map and pca_cols_map[cand] not in candidate_group_cols:
+            candidate_group_cols.append(pca_cols_map[cand])
+        if cand in pls_cols_map and pls_cols_map[cand] not in candidate_group_cols:
+            candidate_group_cols.append(pls_cols_map[cand])
+
 
     selected_group_col = None
     if mode == "Use a column in the score CSV":
@@ -1191,6 +1206,7 @@ st.markdown(
     - Increase confidence to 0.95/0.99 if you want larger ellipses.
     """
 )
+
 
 
 
